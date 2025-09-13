@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+env/
+venv/
+
+# macOS
+.DS_Store
+
+# Secrets / keys (do NOT commit)
+*.pem
+*.key
+id_rsa
+id_dsa
+id_ecdsa
+id_ed25519
