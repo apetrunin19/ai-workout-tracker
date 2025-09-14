@@ -3,3 +3,5 @@
   {"type":"bike","distance_km":18.5,"time_min":40,"calories":520},
   {"type":"swim","distance_km":1.2,"time_min":30,"calories":300}
 ]
+
+{"type": "run", "distance_km": 5.2, "time_min": 27, "calories": 350, "date": "2025-09-13"}
