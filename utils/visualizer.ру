@@ -13,3 +13,193 @@ def plot_progress(workouts, show=True, save_path=None):
         plt.savefig(save_path)  # сохраняем картинку
     if show:
         plt.show()
+
+# utils/visualizer.py
+from __future__ import annotations
+from typing import List, Dict, Optional
+import os
+import math
+import matplotlib.pyplot as plt
+
+try:
+    import pandas as pd
+except ImportError:  # pandas не обязателен для базовых графиков
+    pd = None
+
+
+def _ensure_dir(path: Optional[str]) -> None:
+    if path:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+
+
+def _to_df(workouts: List[Dict]):
+    """
+    Превращаем список тренировок в DataFrame, если есть pandas.
+    Поддерживаются поля: type, distance_km, time_min, calories, date (YYYY-MM-DD).
+    Если даты нет — используем порядковый номер.
+    """
+    if pd is None:
+        return None
+    df = pd.DataFrame(workouts)
+    if "date" in df.columns:
+        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+        df = df.sort_values("date")
+    else:
+        df["idx"] = range(1, len(df) + 1)
+    return df
+
+
+def plot_progress(workouts: List[Dict], show: bool = True, save_path: Optional[str] = None,
+                  annotate_last: bool = True) -> None:
+    """Линейный график прогресса по дистанции."""
+    if not workouts:
+        print("No data to plot.")
+        return
+
+    distances = [w.get("distance_km", 0) for w in workouts]
+    labels = list(range(1, len(workouts) + 1))
+
+    _ensure_dir(save_path)
+    plt.figure()
+    plt.plot(labels, distances, marker="o")
+    plt.title("Distance Progress")
+    plt.xlabel("Workout #")
+    plt.ylabel("Distance (km)")
+    plt.grid(True)
+    if annotate_last and distances:
+        plt.annotate(f"{distances[-1]:.2f} km", (labels[-1], distances[-1]),
+                     textcoords="offset points", xytext=(6, 8))
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=150)
+    if show:
+        plt.show()
+    plt.close()
+
+
+def plot_pace(workouts: List[Dict], rolling: int = 3, show: bool = True,
+              save_path: Optional[str] = None) -> None:
+    """
+    График темпа (мин/км) + скользящее среднее.
+    rolling=1 отключит сглаживание.
+    """
+    if not workouts:
+        print("No data to plot.")
+        return
+
+    pace = []
+    for w in workouts:
+        d = w.get("distance_km", 0) or 0
+        t = w.get("time_min", 0) or 0
+        pace.append((t / d) if d > 0 else math.nan)
+
+    labels = list(range(1, len(pace) + 1))
+
+    _ensure_dir(save_path)
+    plt.figure()
+    plt.plot(labels, pace, marker="o", label="pace (min/km)")
+    if rolling and rolling > 1:
+        # простое сглаживание
+        smoothed = []
+        for i in range(len(pace)):
+            s = pace[max(0, i - rolling + 1): i + 1]
+            smoothed.append(sum(x for x in s if not math.isnan(x)) / max(1, len([x for x in s if not math.isnan(x)])))
+        plt.plot(labels, smoothed, linewidth=2, label=f"rolling {rolling}")
+    plt.title("Pace (min/km)")
+    plt.xlabel("Workout #")
+    plt.ylabel("Pace (min/km)")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=150)
+    if show:
+        plt.show()
+    plt.close()
+
+
+def plot_hist_distance(workouts: List[Dict], bins: int = 10, show: bool = True,
+                       save_path: Optional[str] = None) -> None:
+    """Гистограмма распределения дистанций."""
+    if not workouts:
+        print("No data to plot.")
+        return
+    distances = [w.get("distance_km", 0) for w in workouts]
+    _ensure_dir(save_path)
+    plt.figure()
+    plt.hist(distances, bins=bins, edgecolor="black")
+    plt.title("Distance Distribution")
+    plt.xlabel("Distance (km)")
+    plt.ylabel("Count")
+    plt.grid(True, axis="y", alpha=0.3)
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=150)
+    if show:
+        plt.show()
+    plt.close()
+
+
+def plot_by_type(workouts: List[Dict], metric: str = "distance_km", show: bool = True,
+                 save_path: Optional[str] = None) -> None:
+    """
+    Барчарт суммарных метрик по типам тренировок.
+    metric: distance_km | time_min | calories
+    """
+    if not workouts:
+        print("No data to plot.")
+        return
+
+    totals = {}
+    for w in workouts:
+        t = (w.get("type") or "unknown").lower()
+        totals[t] = totals.get(t, 0) + (w.get(metric, 0) or 0)
+
+    labels = list(totals.keys())
+    values = [totals[k] for k in labels]
+
+    _ensure_dir(save_path)
+    plt.figure()
+    plt.bar(labels, values)
+    plt.title(f"Totals by type — {metric}")
+    plt.xlabel("Type")
+    plt.ylabel(metric)
+    plt.grid(True, axis="y", alpha=0.3)
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=150)
+    if show:
+        plt.show()
+    plt.close()
+
+
+def plot_weekly_totals(workouts: List[Dict], metric: str = "distance_km", show: bool = True,
+                       save_path: Optional[str] = None) -> None:
+    """
+    Недельные суммы по метрике (требуется pandas и поле date).
+    Если дат нет — вежливо сообщим и выходим.
+    """
+    if pd is None:
+        print("pandas is not installed — weekly totals skipped.")
+        return
+
+    df = _to_df(workouts)
+    if df is None or "date" not in df.columns:
+        print("No 'date' field — add dates like 'YYYY-MM-DD' to use weekly totals.")
+        return
+
+    series = df.set_index("date")[metric].fillna(0).resample("W-MON").sum()
+
+    _ensure_dir(save_path)
+    plt.figure()
+    plt.plot(series.index, series.values, marker="o")
+    plt.title(f"Weekly totals — {metric}")
+    plt.xlabel("Week")
+    plt.ylabel(metric)
+    plt.grid(True)
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=150)
+    if show:
+        plt.show()
+    plt.close()
